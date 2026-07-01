@@ -16,20 +16,20 @@ Install from GitHub with the standard OMP plugin command:
 omp plugin install https://github.com/Giardi77/omp-setup-skills-extension.git
 ```
 
-`omp install` is an alias, so this also works:
-
-```bash
-omp install https://github.com/Giardi77/omp-setup-skills-extension.git
-```
-
 If OMP is already running, restart it after installing so the extension is loaded.
 
 ## Local development install
 
-From this checkout:
+For this checkout:
 
 ```bash
 omp plugin link /Users/giardi/projects/omp-setup-skills-extension
+```
+
+For another clone/path:
+
+```bash
+omp plugin link /path/to/omp-setup-skills-extension
 ```
 
 Then restart OMP.
