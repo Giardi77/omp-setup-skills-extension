@@ -4,7 +4,7 @@ import { runProjectSkillsSelector } from "./selector";
 
 function formatSavedSummary(configPath: string, enabledCount: number, totalCount: number): string {
   const disabledCount = Math.max(0, totalCount - enabledCount);
-  return `Updated ${configPath} (${enabledCount} enabled, ${disabledCount} disabled). Reloading skills...`;
+  return `Updated ${configPath} (${enabledCount} enabled, ${disabledCount} disabled). Reloading skills when the agent is idle...`;
 }
 
 export default function setupSkillsExtension(pi: ExtensionAPI): void {
@@ -17,8 +17,6 @@ export default function setupSkillsExtension(pi: ExtensionAPI): void {
         ctx.ui.notify("/setup-skills requires the interactive OMP UI.", "error");
         return;
       }
-
-      await ctx.waitForIdle();
 
       let state;
       try {
@@ -44,6 +42,7 @@ export default function setupSkillsExtension(pi: ExtensionAPI): void {
       }
 
       ctx.ui.notify(formatSavedSummary(state.configPath, selectedNames.size, state.rows.length), "info");
+      await ctx.waitForIdle();
       await ctx.reload();
     },
   });

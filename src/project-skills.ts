@@ -25,6 +25,8 @@ export interface ProjectSkillRow {
   filePath: string;
   source: string;
   enabled: boolean;
+  agentInvokable: boolean;
+  userInvokable: boolean;
 }
 
 export interface ProjectSkillsState {
@@ -179,6 +181,8 @@ function toRows(skills: readonly Skill[], projectSkills: ProjectSkillsConfig): P
     description: skill.description,
     filePath: skill.filePath,
     source: skill.source,
+    agentInvokable: skill.hide !== true,
+    userInvokable: projectSkills.enableSkillCommands !== false,
     enabled: isSkillEnabledByProjectConfig(skill.name, projectSkills),
   }));
 }

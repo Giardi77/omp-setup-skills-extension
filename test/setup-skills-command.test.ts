@@ -19,6 +19,22 @@ type Notification = {
   type?: "info" | "warning" | "error";
 };
 
+type Deferred<T> = {
+  promise: Promise<T>;
+  resolve: (value: T | PromiseLike<T>) => void;
+  reject: (reason?: unknown) => void;
+};
+
+function deferred<T = void>(): Deferred<T> {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 async function makeTempRoot(): Promise<string> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "omp-setup-skills-command-"));
   tempRoots.push(root);
@@ -87,7 +103,15 @@ function registeredSetupSkillsCommand(): RegisteredCommand {
   return command!;
 }
 
-function mockCommandContext(cwd: string, selection: Set<string> | null): {
+type MockCommandContextOptions = {
+  waitForIdle?: () => Promise<void>;
+};
+
+function mockCommandContext(
+  cwd: string,
+  selection: Set<string> | null,
+  options: MockCommandContextOptions = {},
+): {
   ctx: ExtensionCommandContext;
   notifications: Notification[];
   calls: {
@@ -108,6 +132,7 @@ function mockCommandContext(cwd: string, selection: Set<string> | null): {
     cwd,
     waitForIdle: async () => {
       calls.waitForIdle += 1;
+      await options.waitForIdle?.();
     },
     reload: async () => {
       calls.reload += 1;
@@ -139,7 +164,7 @@ afterEach(async () => {
 });
 
 describe("setup-skills command", () => {
-  test("writes the confirmed project skill selection to .omp/config.yml and reloads the session", async () => {
+  test("writes the confirmed project skill selection, waits for idle, and reloads the session", async () => {
     const project = await makeTempProject();
     const configPath = await writeProjectConfig(project, {
       model: "claude-sonnet",
@@ -165,10 +190,55 @@ describe("setup-skills command", () => {
     expect(ignoredSkills).not.toContain("alpha");
     expect(notifications).toEqual([
       {
-        message: `Updated ${configPath} (1 enabled, ${ignoredSkills.length} disabled). Reloading skills...`,
+        message: `Updated ${configPath} (1 enabled, ${ignoredSkills.length} disabled). Reloading skills when the agent is idle...`,
         type: "info",
       },
     ]);
+  });
+
+  test("writes the config before waiting for an active turn to finish and reloads only after idle", async () => {
+    const project = await makeTempProject();
+    const configPath = await writeProjectConfig(project, {
+      model: "claude-sonnet",
+      skills: isolatedSkillsConfig(),
+    });
+    const command = registeredSetupSkillsCommand();
+    const idle = deferred<void>();
+    let markWaitStarted!: () => void;
+    const waitStarted = new Promise<void>(resolve => {
+      markWaitStarted = resolve;
+    });
+    const { ctx, calls } = mockCommandContext(project, new Set(["alpha"]), {
+      waitForIdle: async () => {
+        markWaitStarted();
+        await idle.promise;
+      },
+    });
+    const run = command.handler("", ctx);
+
+    await waitStarted;
+
+    let assertionError: unknown;
+    try {
+      expect(calls.custom).toBe(1);
+      expect(calls.reload).toBe(0);
+      const written = YAML.parse(await Bun.file(configPath).text()) as Record<string, unknown>;
+      const writtenSkills = written.skills as Record<string, unknown>;
+      expect(writtenSkills.enabled).toBe(true);
+      expect(writtenSkills.includeSkills).toEqual([]);
+      expect(writtenSkills.ignoredSkills).toContain("beta");
+      expect(writtenSkills.ignoredSkills).not.toContain("alpha");
+    } catch (error) {
+      assertionError = error;
+    } finally {
+      idle.resolve();
+      await run;
+    }
+
+    if (assertionError !== undefined) {
+      throw assertionError;
+    }
+    expect(calls).toEqual({ waitForIdle: 1, custom: 1, reload: 1 });
   });
 
   test("leaves project config and session reload untouched when skill selection is cancelled", async () => {
@@ -188,7 +258,7 @@ describe("setup-skills command", () => {
 
     await command.handler("", ctx);
 
-    expect(calls).toEqual({ waitForIdle: 1, custom: 1, reload: 0 });
+    expect(calls).toEqual({ waitForIdle: 0, custom: 1, reload: 0 });
     expect(notifications).toEqual([{ message: "Project skills unchanged.", type: "info" }]);
     expect(await Bun.file(configPath).text()).toBe(originalConfig);
   });

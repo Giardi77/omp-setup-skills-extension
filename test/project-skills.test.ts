@@ -25,13 +25,14 @@ afterEach(async () => {
   await Promise.all(tempRoots.splice(0).map(root => fs.rm(root, { recursive: true, force: true })));
 });
 
-function skill(name: string, root: string): Skill {
+function skill(name: string, root: string, overrides: Partial<Skill> = {}): Skill {
   return {
     name,
     description: `${name} description`,
     filePath: path.join(root, ".omp", "skills", `${name}.md`),
     baseDir: path.join(root, ".omp", "skills"),
     source: "project",
+    ...overrides,
   };
 }
 
@@ -42,6 +43,8 @@ function row(name: string): ProjectSkillRow {
     filePath: `/skills/${name}.md`,
     source: "project",
     enabled: true,
+    agentInvokable: true,
+    userInvokable: true,
   };
 }
 
@@ -190,6 +193,36 @@ describe("loadProjectSkillsState", () => {
       { name: "blocked/review", enabled: false },
     ]);
     expect(state.warnings).toEqual([`${path.join(project, ".omp", "skills", "bad.md")}: bad frontmatter`]);
+  });
+
+  test("marks skills as not user-invokable when project skill commands are disabled while hide still controls agent invocation", async () => {
+    const root = await makeTempRoot();
+    const project = path.join(root, "repo");
+    await fs.mkdir(path.join(project, ".omp"), { recursive: true });
+    await Bun.write(
+      path.join(project, ".omp", "config.yml"),
+      YAML.stringify({
+        skills: {
+          enableSkillCommands: false,
+        },
+      }),
+    );
+
+    const state = await loadProjectSkillsState(project, async () => ({
+      skills: [skill("hidden", project, { hide: true }), skill("normal", project)],
+      warnings: [],
+    }));
+
+    expect(
+      state.rows.map(row => ({
+        name: row.name,
+        agentInvokable: row.agentInvokable,
+        userInvokable: row.userInvokable,
+      })),
+    ).toEqual([
+      { name: "hidden", agentInvokable: false, userInvokable: false },
+      { name: "normal", agentInvokable: true, userInvokable: false },
+    ]);
   });
 });
 

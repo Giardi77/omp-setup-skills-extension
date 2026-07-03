@@ -1,7 +1,7 @@
 import type { Component, TUI } from "@oh-my-pi/pi-tui";
 import { Ellipsis, matchesKey, truncateToWidth } from "@oh-my-pi/pi-tui";
 import type { ExtensionCommandContext } from "@oh-my-pi/pi-coding-agent";
-import type { ProjectSkillsState } from "./project-skills";
+import type { ProjectSkillRow, ProjectSkillsState } from "./project-skills";
 
 type Done = (result: Set<string> | null) => void;
 
@@ -33,6 +33,17 @@ function selected(theme: ThemeLike, text: string): string {
   } catch {
     return text;
   }
+}
+
+function invocationBadge(
+  theme: ThemeLike,
+  row: Pick<ProjectSkillRow, "agentInvokable" | "userInvokable">,
+): string {
+  const labels: string[] = [];
+  if (row.agentInvokable) labels.push("agent");
+  if (row.userInvokable) labels.push("user");
+  if (labels.length === 0) return color(theme, "warning", "[not invokable]");
+  return color(theme, row.agentInvokable ? "accent" : "muted", `[${labels.join("+")}]`);
 }
 
 export class ProjectSkillsSelector implements Component {
@@ -94,9 +105,10 @@ export class ProjectSkillsSelector implements Component {
       const enabled = this.#selectedNames.has(row.name);
       const checkbox = enabled ? color(this.theme, "success", "[x]") : dim("[ ]");
       const source = muted(row.source);
+      const invocation = invocationBadge(this.theme, row);
       const desc = row.description ? dim(` — ${row.description}`) : "";
       const prefix = focused ? color(this.theme, "accent", "›") : " ";
-      let line = `${prefix} ${checkbox} ${bold(this.theme, row.name)} ${source}${desc}`;
+      let line = `${prefix} ${checkbox} ${bold(this.theme, row.name)} ${source} ${invocation}${desc}`;
       line = truncateToWidth(line, width, Ellipsis.Omit);
 
       if (focused) {
@@ -112,7 +124,7 @@ export class ProjectSkillsSelector implements Component {
     }
 
     lines.push("");
-    lines.push(dim(truncateToWidth("↑/↓ or j/k navigate  Space toggle  a all  n none  Enter confirm + reload  Esc cancel", width, Ellipsis.Omit)));
+    lines.push(dim(truncateToWidth("↑/↓ or j/k navigate  Space toggle  a all  n none  Enter confirm + reload when idle  Esc cancel", width, Ellipsis.Omit)));
     return lines;
   }
 
