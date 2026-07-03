@@ -5,9 +5,9 @@
   "description": "OMP extension that adds /setup-skills for project skill selection.",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Giardi77/omp-setup-skills-extension.git"
+    "url": "https://github.com/Giardi77/omp-plugins.git"
   },
-  "homepage": "https://github.com/Giardi77/omp-setup-skills-extension",
+  "homepage": "https://github.com/Giardi77/omp-plugins",
   "keywords": [
     "omp",
     "oh-my-pi",
