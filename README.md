@@ -10,18 +10,43 @@ It currently includes `omp-setup-skills-extension`, which adds one OMP command:
 
 The command opens a small checkbox menu for the current project so you can enable or disable discovered OMP skills without editing YAML by hand.
 
-## Install from the marketplace
+## Install in OMP
 
-Add the marketplace, then install the setup-skills plugin:
+If you previously installed this plugin directly from GitHub, remove that install first to avoid loading the same command twice:
+
+```bash
+omp plugin uninstall omp-setup-skills-extension
+```
+
+Add this repository as an OMP marketplace:
 
 ```bash
 omp plugin marketplace add Giardi77/omp-plugins
+```
+
+Verify that OMP can see the marketplace and its plugins:
+
+```bash
+omp plugin marketplace list
+omp plugin discover giardi-plugins
+```
+
+Install the setup-skills plugin from the marketplace:
+
+```bash
 omp plugin install omp-setup-skills-extension@giardi-plugins
 ```
 
 If OMP is already running, restart it after installing so the extension is loaded.
 
-For direct Git installs without the marketplace:
+For future releases, refresh the cached marketplace catalog before upgrading:
+
+```bash
+omp plugin marketplace update giardi-plugins
+omp plugin upgrade
+```
+
+Alternative direct Git install, without marketplace upgrade support:
 
 ```bash
 omp plugin install https://github.com/Giardi77/omp-plugins.git
