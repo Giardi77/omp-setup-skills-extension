@@ -1,6 +1,33 @@
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
+import { loadSkills, setActiveSkills } from "@oh-my-pi/pi-coding-agent/extensibility/skills";
 import { loadProjectSkillsState, writeProjectSkillsSelection } from "./project-skills";
 import { runProjectSkillsSelector } from "./selector";
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function filterDisabledSkillsFromSystemPrompt(
+  systemPrompt: readonly string[],
+  disabledSkillNames: ReadonlySet<string>,
+): string[] {
+  if (disabledSkillNames.size === 0) return [...systemPrompt];
+
+  return systemPrompt.map(fragment =>
+    fragment.replace(/<skills>([\s\S]*?)<\/skills>/g, (_block, body: string) => {
+      let filtered = body;
+      for (const name of disabledSkillNames) {
+        const escapedName = escapeRegExp(name);
+        filtered = filtered.replace(
+          new RegExp(`<skill\\s+name=(["'])${escapedName}\\1[^>]*>[\\s\\S]*?<\\/skill>\\s*`, "g"),
+          "",
+        );
+        filtered = filtered.replace(new RegExp(`^\\s*-\\s+${escapedName}:.*(?:\\r?\\n|$)`, "gm"), "");
+      }
+      return filtered.trim() === "" ? "" : `<skills>${filtered}</skills>`;
+    }),
+  );
+}
 
 function formatSavedSummary(configPath: string, enabledCount: number, totalCount: number): string {
   const disabledCount = Math.max(0, totalCount - enabledCount);
@@ -9,6 +36,15 @@ function formatSavedSummary(configPath: string, enabledCount: number, totalCount
 
 export default function setupSkillsExtension(pi: ExtensionAPI): void {
   pi.setLabel("Setup Skills");
+  let disabledSkillNames = new Set<string>();
+
+  pi.on("before_agent_start", async event => {
+    if (disabledSkillNames.size === 0) return;
+    return {
+      systemPrompt: filterDisabledSkillsFromSystemPrompt(event.systemPrompt, disabledSkillNames),
+    };
+  });
+
 
   pi.registerCommand("setup-skills", {
     description: "Select enabled skills for this project and reload the session",
@@ -33,16 +69,25 @@ export default function setupSkillsExtension(pi: ExtensionAPI): void {
         return;
       }
 
+      let nextSkills;
       try {
-        await writeProjectSkillsSelection(state, selectedNames);
+        nextSkills = await writeProjectSkillsSelection(state, selectedNames);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         ctx.ui.notify(message, "error");
         return;
       }
 
+      disabledSkillNames = new Set(state.rows.filter(row => !selectedNames.has(row.name)).map(row => row.name));
+
       ctx.ui.notify(formatSavedSummary(state.configPath, selectedNames.size, state.rows.length), "info");
       await ctx.waitForIdle();
+
+      const refreshed = await loadSkills({
+        ...nextSkills,
+        cwd: state.projectRoot,
+      });
+      setActiveSkills(refreshed.skills);
       await ctx.reload();
     },
   });

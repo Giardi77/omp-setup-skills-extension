@@ -4,7 +4,12 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { YAML } from "bun";
 import type { ExtensionAPI, ExtensionCommandContext } from "@oh-my-pi/pi-coding-agent";
-import setupSkillsExtension from "../src/index";
+import {
+  getActiveSkills,
+  resetActiveSkillsForTests,
+  setActiveSkills,
+} from "@oh-my-pi/pi-coding-agent/extensibility/skills";
+import setupSkillsExtension, { filterDisabledSkillsFromSystemPrompt } from "../src/index";
 
 const tempRoots: string[] = [];
 const previousHomes: Array<string | undefined> = [];
@@ -94,6 +99,7 @@ function registeredSetupSkillsCommand(): RegisteredCommand {
     registerCommand(name: string, options: RegisteredCommand): void {
       commands[name] = options;
     },
+    on(): void {},
   } as unknown as ExtensionAPI);
 
   expect(labels).toEqual(["Setup Skills"]);
@@ -161,6 +167,7 @@ afterEach(async () => {
     }
   }
   await Promise.all(tempRoots.splice(0).map(root => fs.rm(root, { recursive: true, force: true })));
+  resetActiveSkillsForTests();
 });
 
 describe("setup-skills command", () => {
@@ -239,6 +246,47 @@ describe("setup-skills command", () => {
       throw assertionError;
     }
     expect(calls).toEqual({ waitForIdle: 1, custom: 1, reload: 1 });
+  });
+
+  test("removes unchecked skills from the active agent skill registry", async () => {
+    const project = await makeTempProject();
+    await writeProjectConfig(project, {
+      skills: isolatedSkillsConfig(),
+    });
+    setActiveSkills([
+      {
+        name: "alpha",
+        description: "Alpha project skill",
+        filePath: path.join(project, ".omp", "skills", "alpha", "SKILL.md"),
+        baseDir: path.join(project, ".omp", "skills", "alpha"),
+        source: "native:project",
+      },
+      {
+        name: "beta",
+        description: "Beta project skill",
+        filePath: path.join(project, ".omp", "skills", "beta", "SKILL.md"),
+        baseDir: path.join(project, ".omp", "skills", "beta"),
+        source: "native:project",
+      },
+    ]);
+    const command = registeredSetupSkillsCommand();
+    const { ctx } = mockCommandContext(project, new Set(["alpha"]));
+
+    await command.handler("", ctx);
+
+    expect(getActiveSkills().map(skill => skill.name)).toEqual(["alpha"]);
+  });
+
+  test("removes unchecked skills from stale standard and custom system prompts", () => {
+    const prompt = [
+      "Skills\n<skills>\n- alpha: Alpha project skill\n- beta: Beta project skill\n</skills>\nRules",
+      '<skills>\n<skill name="alpha">\nAlpha project skill\n</skill>\n<skill name="beta">\nBeta project skill\n</skill>\n</skills>',
+    ];
+
+    expect(filterDisabledSkillsFromSystemPrompt(prompt, new Set(["beta"]))).toEqual([
+      "Skills\n<skills>\n- alpha: Alpha project skill\n</skills>\nRules",
+      '<skills>\n<skill name="alpha">\nAlpha project skill\n</skill>\n</skills>',
+    ]);
   });
 
   test("leaves project config and session reload untouched when skill selection is cancelled", async () => {
